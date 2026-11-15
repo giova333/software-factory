@@ -1,0 +1,79 @@
+# Reusable workflow: target repos call this (see examples/factory.yml).
+name: factory
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Factory image to run
+        type: string
+        default: ghcr.io/giova333/software-factory:main
+      allowed_users:
+        description: Comma-separated hard allowlist of GitHub logins. Overrides allowed_users in .factory.yml.
+        type: string
+        default: ''
+    secrets:
+      anthropic_api_key:
+        required: true
+      app_id:
+        required: true
+      app_private_key:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # One run at a time per issue/PR; later events queue instead of cancelling.
+    concurrency:
+      group: factory-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Mint factory-bot token
+        id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.app_id }}
+          private-key: ${{ secrets.app_private_key }}
+
+      - name: Resolve bot identity
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
+          echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
+      - name: Run factory
+        env:
+          IMAGE: ${{ inputs.image }}
+          FACTORY_GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic_api_key }}
+          FACTORY_ALLOWED_USERS: ${{ inputs.allowed_users }}
+          FACTORY_GIT_NAME: ${{ steps.bot.outputs.name }}
+          FACTORY_GIT_EMAIL: ${{ steps.bot.outputs.email }}
+          FACTORY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          out="$RUNNER_TEMP/factory-out"
+          mkdir -p "$out" && chmod 777 "$out"
+          docker run --rm \
+            -e FACTORY_GITHUB_TOKEN -e ANTHROPIC_API_KEY -e FACTORY_ALLOWED_USERS \
+            -e FACTORY_GIT_NAME -e FACTORY_GIT_EMAIL -e FACTORY_RUN_URL \
+            -e GITHUB_EVENT_NAME -e GITHUB_SERVER_URL -e GITHUB_API_URL \
+            -v "$GITHUB_EVENT_PATH:/event.json:ro" \
+            -v "$out:/out" \
+            "$IMAGE" run --event /event.json --out /out
+
+      - name: Upload transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-run
+          path: ${{ runner.temp }}/factory-out
+          if-no-files-found: ignore
+          retention-days: 14

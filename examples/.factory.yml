@@ -1,0 +1,12 @@
+# Copy to the root of the target repo. Every key is optional; these are the defaults unless noted.
+harness: claude-code          # claude-code | fake (codex, opencode in v1.1)
+model: claude-sonnet-5-5
+allowed_users: [giova333]     # empty = anyone with write access
+skills:                       # pinned to a full commit SHA; branches and tags are rejected
+  # - github:mattpocock/skills@<40-char-sha>#skills/engineering/tdd
+setup: npm ci                 # run by the factory before the agent (no default)
+test: npm test                # the agent is told to keep it green; the factory re-runs it (no default)
+branch_prefix: factory/
+limits:
+  timeout_minutes: 30
+  max_turns: 60

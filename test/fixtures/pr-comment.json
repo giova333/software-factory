@@ -1,0 +1,7 @@
+{
+  "action": "created",
+  "issue": { "number": 7, "title": "Add hello endpoint", "pull_request": { "url": "https://api.github.com/repos/giova333/sandbox/pulls/7" } },
+  "comment": { "id": 202, "body": "/factory rename the function to greet", "user": { "login": "giova333", "type": "User" } },
+  "repository": { "name": "sandbox", "owner": { "login": "giova333" } },
+  "sender": { "login": "giova333", "type": "User" }
+}

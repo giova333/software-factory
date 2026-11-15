@@ -1,0 +1,7 @@
+{
+  "action": "labeled",
+  "label": { "name": "factory" },
+  "issue": { "number": 1, "title": "Add hello endpoint", "body": "Return hello world", "user": { "login": "giova333", "type": "User" } },
+  "repository": { "name": "sandbox", "owner": { "login": "giova333" } },
+  "sender": { "login": "giova333", "type": "User" }
+}

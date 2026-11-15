@@ -1,0 +1,7 @@
+{
+  "action": "created",
+  "issue": { "number": 1, "title": "Add hello endpoint", "body": "Return hello world" },
+  "comment": { "id": 101, "body": "/factory --harness fake build use plain JS", "user": { "login": "giova333", "type": "User" } },
+  "repository": { "name": "sandbox", "owner": { "login": "giova333" } },
+  "sender": { "login": "giova333", "type": "User" }
+}

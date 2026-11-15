@@ -1,0 +1,7 @@
+{
+  "action": "submitted",
+  "review": { "id": 303, "state": "changes_requested", "body": "Please add a test", "user": { "login": "giova333", "type": "User" } },
+  "pull_request": { "number": 7, "head": { "ref": "factory/1-add-hello-endpoint" } },
+  "repository": { "name": "sandbox", "owner": { "login": "giova333" } },
+  "sender": { "login": "giova333", "type": "User" }
+}
