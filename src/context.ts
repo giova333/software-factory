@@ -1,5 +1,5 @@
 import type { GitHub } from './github.js';
-import type { Job } from './types.js';
+import { BRANCH_PREFIX, repoFullName, type Job } from './types.js';
 
 const MAX_DIFF = 60_000;
 const MAX_THREAD = 40_000;
@@ -40,13 +40,14 @@ function renderThread(comments: { author: string; body: string; createdAt: strin
 }
 
 /** Step 1: gather everything the agent needs about the issue or PR. */
-export async function fetchContext(job: Job, gh: GitHub, branchPrefix: string): Promise<TaskContext> {
-  const fullName = `${job.repo.owner}/${job.repo.name}`;
+export async function fetchContext(job: Job, gh: GitHub): Promise<TaskContext> {
+  const fullName = repoFullName(job.repo);
 
   if (!job.isPullRequest) {
     const [issue, comments, base] = await Promise.all([gh.getIssue(job.number), gh.listIssueComments(job.number), gh.getDefaultBranch()]);
-    const branch = `${branchPrefix}${job.number}-${slugify(issue.title)}`;
-    const existing = await gh.findOpenPullByHead(branch);
+    // Reuse the branch of an open PR for this issue, so renaming the issue does not start a new branch and PR.
+    const existing = await gh.findOpenPullByHeadPrefix(`${BRANCH_PREFIX}${job.number}-`);
+    const branch = existing?.headRef ?? `${BRANCH_PREFIX}${job.number}-${slugify(issue.title)}`;
     return {
       title: issue.title,
       body: issue.body,
@@ -72,9 +73,9 @@ export async function fetchContext(job: Job, gh: GitHub, branchPrefix: string): 
     pr: { number: pull.number, url: pull.url },
   };
   if (job.kind === 'review-fix' && job.reviewId) {
-    const [review, rc] = await Promise.all([gh.getReviewBody(job.number, job.reviewId), gh.listReviewComments(job.number, job.reviewId)]);
+    const [review, reviewComments] = await Promise.all([gh.getReviewBody(job.number, job.reviewId), gh.listReviewComments(job.number, job.reviewId)]);
     ctx.review = review;
-    ctx.reviewComments = rc.map((c) => `- \`${c.path}${c.line ? `:${c.line}` : ''}\` (@${c.author}): ${c.body}`).join('\n');
+    ctx.reviewComments = reviewComments.map((c) => `- \`${c.path}${c.line ? `:${c.line}` : ''}\` (@${c.author}): ${c.body}`).join('\n');
   }
   return ctx;
 }

@@ -15,14 +15,16 @@ permissions:
 jobs:
   factory:
     # Cheap pre-filter so ordinary comments don't start a runner. The factory re-checks everything.
+    # 'factory/' must match BRANCH_PREFIX in src/types.ts.
     if: >-
       (github.event_name == 'issues' && github.event.label.name == 'factory') ||
       (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/factory')) ||
       (github.event_name == 'pull_request_review' && github.event.review.state == 'changes_requested' &&
        startsWith(github.event.pull_request.head.ref, 'factory/'))
+    # Hard allowlist: set the Actions variable FACTORY_ALLOWED_USERS (Settings → Secrets and variables
+    # → Actions → Variables), e.g. "giova333". A PR cannot change it. Passing `with: allowed_users: ...`
+    # here also works and wins over the variable, but this file can be edited in a PR.
     uses: giova333/software-factory/.github/workflows/factory.yml@main
-    with:
-      allowed_users: giova333
     secrets:
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
       app_id: ${{ secrets.FACTORY_APP_ID }}

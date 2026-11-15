@@ -1,6 +1,7 @@
-import { cp, mkdir, readdir, stat } from 'node:fs/promises';
+import { cp, mkdir, readdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { exec } from './exec.js';
+import { pathExists } from './fsutil.js';
 import type { Logger } from './types.js';
 
 export interface SkillSource {
@@ -26,18 +27,9 @@ export function parseSkillSource(raw: string): SkillSource {
   return { raw, owner: m[1]!, repo: m[2]!, sha: m[3]!, path };
 }
 
-async function exists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Every directory under `root` (inclusive) that contains a SKILL.md. */
 export async function findSkillDirs(root: string): Promise<string[]> {
-  if (await exists(join(root, 'SKILL.md'))) return [root];
+  if (await pathExists(join(root, 'SKILL.md'))) return [root];
   const out: string[] = [];
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (entry.isDirectory() && !entry.name.startsWith('.')) out.push(...(await findSkillDirs(join(root, entry.name))));
@@ -71,7 +63,7 @@ export async function resolveSkills(
     await exec('git', ['-C', checkout, 'fetch', '-q', '--depth', '1', fetchUrl(src), src.sha]);
     await exec('git', ['-C', checkout, 'checkout', '-q', 'FETCH_HEAD']);
     const root = join(checkout, src.path);
-    if (!(await exists(root))) throw new Error(`Skill path "${src.path}" not found in ${src.owner}/${src.repo}@${src.sha}`);
+    if (!(await pathExists(root))) throw new Error(`Skill path "${src.path}" not found in ${src.owner}/${src.repo}@${src.sha}`);
     const dirs = await findSkillDirs(root);
     if (dirs.length === 0) throw new Error(`No SKILL.md found under ${raw}`);
     for (const dir of dirs) {

@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pathExists } from './fsutil.js';
 import type { JobKind } from './types.js';
-import { pathExists } from './harness/shared.js';
 
 const BUILTIN_DIR = join(dirname(fileURLToPath(import.meta.url)), 'prompts');
 
@@ -20,6 +20,17 @@ async function loadTemplate(name: string, workspace: string): Promise<string> {
   return readFile(join(BUILTIN_DIR, `${name}.md`), 'utf8');
 }
 
+/**
+ * The unrendered prompt (task template + shared rules) for `kind`.
+ * Call this while `workspace` is on the default branch: overrides on a PR branch must not
+ * get to rewrite the agent's rules.
+ */
+export async function loadPromptTemplate(kind: JobKind, workspace: string): Promise<string> {
+  const body = await loadTemplate(TEMPLATE_FOR[kind], workspace);
+  const rules = kind === 'plan' ? '' : await loadTemplate('_rules', workspace);
+  return body + rules;
+}
+
 export function render(template: string, vars: Record<string, string | undefined>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, k: string) => {
     const v = vars[k];
@@ -27,8 +38,6 @@ export function render(template: string, vars: Record<string, string | undefined
   });
 }
 
-export async function buildPrompt(kind: JobKind, workspace: string, vars: Record<string, string | undefined>): Promise<string> {
-  const body = await loadTemplate(TEMPLATE_FOR[kind], workspace);
-  const rules = kind === 'plan' ? '' : await loadTemplate('_rules', workspace);
-  return render(body + rules, vars).trim() + '\n';
+export function renderPrompt(template: string, promptVars: Record<string, string | undefined>): string {
+  return render(template, promptVars).trim() + '\n';
 }

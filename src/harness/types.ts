@@ -16,7 +16,7 @@ export interface HarnessResult {
   ok: boolean;
   /** Final message from the agent, posted back to GitHub. */
   summary: string;
-  /** Raw output, uploaded as a run artifact. */
+  /** Raw output, saved to the run's output directory. */
   transcript: string;
   costUsd?: number;
   turns?: number;

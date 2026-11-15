@@ -11,7 +11,6 @@ export interface FactoryConfig {
   skills: string[];
   setup?: string;
   test?: string;
-  branch_prefix: string;
   limits: {
     timeout_minutes: number;
     max_turns: number;
@@ -23,7 +22,6 @@ export const DEFAULT_CONFIG: FactoryConfig = {
   model: 'claude-sonnet-5-5',
   allowed_users: [],
   skills: [],
-  branch_prefix: 'factory/',
   limits: { timeout_minutes: 30, max_turns: 60 },
 };
 
@@ -39,6 +37,10 @@ export function mergeConfig(raw: unknown): FactoryConfig {
   };
   if (!Array.isArray(cfg.allowed_users)) throw new Error('allowed_users must be a list');
   if (!Array.isArray(cfg.skills)) throw new Error('skills must be a list');
+  for (const k of ['timeout_minutes', 'max_turns'] as const) {
+    const v = cfg.limits[k];
+    if (typeof v !== 'number' || !(v > 0)) throw new Error(`limits.${k} must be a positive number`);
+  }
   return cfg;
 }
 

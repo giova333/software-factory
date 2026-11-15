@@ -14,9 +14,11 @@ export function createHarness(name: string): Harness {
     case 'claude-code':
       return new ClaudeCodeHarness();
     case 'fake':
-      return new FakeHarness();
+      // Dry runs only: in production `/factory --harness fake` must not skip the agent.
+      if (process.env.FACTORY_ENABLE_FAKE_HARNESS === '1') return new FakeHarness();
+      throw new Error('Harness "fake" is disabled. Set FACTORY_ENABLE_FAKE_HARNESS=1 to allow it.');
     default:
       if (PLANNED[name]) throw new Error(`Harness "${name}" is planned for ${PLANNED[name]} and not available yet.`);
-      throw new Error(`Unknown harness "${name}". Available: claude-code, fake.`);
+      throw new Error(`Unknown harness "${name}". Available: claude-code.`);
   }
 }

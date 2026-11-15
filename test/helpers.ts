@@ -25,6 +25,20 @@ export function makeOrigin(files: Record<string, string>): { url: string; bare: 
   return { url: `file://${bare}`, bare };
 }
 
+/** Push a commit with `files` to `branch` (created from main) in the bare origin. */
+export function pushBranch(bare: string, branch: string, files: Record<string, string>): void {
+  const work = mkdtempSync(join(tmpdir(), 'factory-branch-'));
+  git(work, 'clone', '-q', bare, '.');
+  git(work, 'checkout', '-q', '-b', branch);
+  for (const [p, c] of Object.entries(files)) {
+    mkdirSync(dirname(join(work, p)), { recursive: true });
+    writeFileSync(join(work, p), c);
+  }
+  git(work, 'add', '-A');
+  git(work, 'commit', '-q', '-m', `on ${branch}`);
+  git(work, 'push', '-q', 'origin', branch);
+}
+
 export class FakeGitHub implements GitHub {
   comments: { n: number; body: string }[] = [];
   reactions: unknown[] = [];
@@ -33,7 +47,7 @@ export class FakeGitHub implements GitHub {
   issues: Record<number, Issue> = {};
 
   async getIssue(n: number) {
-    return this.issues[n] ?? { title: 'Add hello endpoint', body: 'Return hello world', author: 'giova333', isPullRequest: false };
+    return this.issues[n] ?? { title: 'Add hello endpoint', body: 'Return hello world' };
   }
   async listIssueComments(_n: number): Promise<Comment[]> {
     return [{ author: 'giova333', body: 'please use plain JS', createdAt: '2026-11-15T00:00:00Z' }];
@@ -64,8 +78,8 @@ export class FakeGitHub implements GitHub {
   async comment(n: number, body: string) {
     this.comments.push({ n, body });
   }
-  async findOpenPullByHead(branch: string) {
-    return this.pulls.find((p) => p.headRef === branch) ?? null;
+  async findOpenPullByHeadPrefix(prefix: string) {
+    return this.pulls.find((p) => p.headRef.startsWith(prefix) && p.headRepo === 'giova333/sandbox') ?? null;
   }
   async createDraftPull(p: { title: string; head: string; base: string; body: string }) {
     const pr: Pull = { number: 100 + this.pulls.length, title: p.title, body: p.body, headRef: p.head, headRepo: 'giova333/sandbox', baseRef: p.base, url: `https://github.com/giova333/sandbox/pull/${100 + this.pulls.length}` };

@@ -1,15 +1,7 @@
-import { cp, mkdir, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { pathExists } from '../fsutil.js';
 import type { ResolvedSkill } from '../skills.js';
-
-export async function pathExists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** Copy skills into `<workspace>/<relDir>/<name>`, skipping names the repo already defines. */
 export async function placeSkills(workspace: string, relDir: string, skills: ResolvedSkill[]): Promise<string[]> {

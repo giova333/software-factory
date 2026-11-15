@@ -7,17 +7,27 @@ import { OctokitGitHub } from './github.js';
 import { createHarness } from './harness/index.js';
 import { runJob } from './pipeline.js';
 import { parseEvent } from './triggers.js';
-import type { Logger } from './types.js';
+import { repoFullName, type Logger } from './types.js';
 
-const USAGE = `Usage: factory run [--event <path>] [--event-name <name>] [--out <dir>]
+const USAGE = `Usage: factory run [--event <path>] [--event-name <name>] [--server-url <url>] [--api-url <url>]
+                   [--token-stdin] [--out <dir>]
+
+  --event, --event-name   event payload file and event name (e.g. issues, issue_comment)
+  --server-url            git server, default https://github.com
+  --api-url               GitHub API base URL, default Octokit's (https://api.github.com)
+  --token-stdin           read the GitHub App installation token from stdin. Use this in production:
+                          a token in the environment is readable from /proc/<pid>/environ by the agent.
+  --out                   where prompt.md, transcript.txt and run.json go
 
 Environment:
-  GITHUB_EVENT_PATH, GITHUB_EVENT_NAME   event payload and name (defaults for --event/--event-name)
-  FACTORY_GITHUB_TOKEN                   GitHub App installation token (push, PRs, comments)
-  ANTHROPIC_API_KEY                      passed to the harness; nothing else secret is
-  FACTORY_ALLOWED_USERS                  comma-separated hard allowlist (optional)
-  FACTORY_GIT_NAME, FACTORY_GIT_EMAIL    commit identity
-  FACTORY_RUN_URL                        link to this run, shown in replies
+  FACTORY_EVENT_PATH, FACTORY_EVENT_NAME   defaults for --event / --event-name
+  FACTORY_SERVER_URL, FACTORY_API_URL      defaults for --server-url / --api-url
+  FACTORY_GITHUB_TOKEN                     token fallback for local development (prefer --token-stdin)
+  ANTHROPIC_API_KEY                        passed to the harness; nothing else secret is
+  FACTORY_ALLOWED_USERS                    comma-separated hard allowlist (optional)
+  FACTORY_GIT_NAME, FACTORY_GIT_EMAIL      commit identity
+  FACTORY_RUN_URL                          link to this run, shown in replies
+  FACTORY_ENABLE_FAKE_HARNESS=1            allow the scripted "fake" harness (dry runs)
 `;
 
 const log: Logger = {
@@ -25,12 +35,28 @@ const log: Logger = {
   warn: (m) => console.warn(`[factory] WARN ${m}`),
 };
 
+async function readStdin(): Promise<string> {
+  let data = '';
+  for await (const chunk of process.stdin) data += chunk;
+  return data;
+}
+
+async function readToken(fromStdin: boolean | undefined): Promise<string | undefined> {
+  const token = fromStdin ? (await readStdin()).trim() : process.env.FACTORY_GITHUB_TOKEN;
+  // Either way, keep it out of the environment that child processes inherit.
+  delete process.env.FACTORY_GITHUB_TOKEN;
+  return token || undefined;
+}
+
 async function main(): Promise<number> {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: {
       event: { type: 'string' },
       'event-name': { type: 'string' },
+      'server-url': { type: 'string' },
+      'api-url': { type: 'string' },
+      'token-stdin': { type: 'boolean' },
       out: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -40,8 +66,11 @@ async function main(): Promise<number> {
     return values.help ? 0 : 2;
   }
 
-  const eventPath = values.event ?? process.env.GITHUB_EVENT_PATH;
-  const eventName = values['event-name'] ?? process.env.GITHUB_EVENT_NAME;
+  // Read the token first so it leaves the environment even when the event is skipped.
+  const token = await readToken(values['token-stdin']);
+
+  const eventPath = values.event ?? process.env.FACTORY_EVENT_PATH;
+  const eventName = values['event-name'] ?? process.env.FACTORY_EVENT_NAME;
   if (!eventPath || !eventName) throw new Error('event path and name are required (see --help)');
   const payload = JSON.parse(await readFile(eventPath, 'utf8'));
 
@@ -51,19 +80,19 @@ async function main(): Promise<number> {
     return 0;
   }
   const job = parsed.job;
-  log.info(`job ${job.kind} on ${job.repo.owner}/${job.repo.name}#${job.number} by @${job.actor}`);
+  log.info(`job ${job.kind} on ${repoFullName(job.repo)}#${job.number} by @${job.actor}`);
 
-  const token = process.env.FACTORY_GITHUB_TOKEN;
-  if (!token) throw new Error('FACTORY_GITHUB_TOKEN is not set');
-  const server = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
+  if (!token) throw new Error(values['token-stdin'] ? 'no token on stdin' : 'no token: pass --token-stdin or set FACTORY_GITHUB_TOKEN');
+  const server = (values['server-url'] ?? process.env.FACTORY_SERVER_URL ?? 'https://github.com').replace(/\/+$/, '');
+  const apiUrl = values['api-url'] ?? process.env.FACTORY_API_URL;
   const workRoot = await mkdtemp(join(tmpdir(), 'factory-'));
 
   const outcome = await runJob(job, {
-    gh: new OctokitGitHub(token, job.repo, process.env.GITHUB_API_URL),
+    gh: new OctokitGitHub(token, job.repo, apiUrl),
     log,
     workRoot,
     outDir: values.out ?? join(workRoot, 'out'),
-    repoUrl: `${server}/${job.repo.owner}/${job.repo.name}.git`,
+    repoUrl: `${server}/${repoFullName(job.repo)}.git`,
     token,
     identity: {
       name: process.env.FACTORY_GIT_NAME ?? 'software-factory',

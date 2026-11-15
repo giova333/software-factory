@@ -1,11 +1,9 @@
 import { Octokit } from '@octokit/rest';
-import type { RepoRef } from './types.js';
+import { repoFullName, type RepoRef } from './types.js';
 
 export interface Issue {
   title: string;
   body: string;
-  author: string;
-  isPullRequest: boolean;
 }
 
 export interface Comment {
@@ -43,7 +41,8 @@ export interface GitHub {
   getDefaultBranch(): Promise<string>;
   reactEyes(target: { commentId?: number; issueNumber?: number }): Promise<void>;
   comment(n: number, body: string): Promise<void>;
-  findOpenPullByHead(branch: string): Promise<Pull | null>;
+  /** An open PR whose head branch (in this repo, not a fork) starts with `prefix`. */
+  findOpenPullByHeadPrefix(prefix: string): Promise<Pull | null>;
   createDraftPull(p: { title: string; head: string; base: string; body: string }): Promise<Pull>;
 }
 
@@ -70,7 +69,7 @@ export class OctokitGitHub implements GitHub {
 
   async getIssue(n: number): Promise<Issue> {
     const { data } = await this.o.issues.get({ ...this.r, issue_number: n });
-    return { title: data.title, body: data.body ?? '', author: data.user?.login ?? '', isPullRequest: Boolean(data.pull_request) };
+    return { title: data.title, body: data.body ?? '' };
   }
 
   async listIssueComments(n: number): Promise<Comment[]> {
@@ -130,9 +129,11 @@ export class OctokitGitHub implements GitHub {
     await this.o.issues.createComment({ ...this.r, issue_number: n, body });
   }
 
-  async findOpenPullByHead(branch: string): Promise<Pull | null> {
-    const { data } = await this.o.pulls.list({ ...this.r, state: 'open', head: `${this.r.owner}:${branch}` });
-    return data[0] ? toPull(data[0]) : null;
+  async findOpenPullByHeadPrefix(prefix: string): Promise<Pull | null> {
+    const fullName = repoFullName({ owner: this.r.owner, name: this.r.repo });
+    const data = await this.o.paginate(this.o.pulls.list, { ...this.r, state: 'open', per_page: 100 });
+    const match = data.find((p) => p.head.ref.startsWith(prefix) && p.head.repo?.full_name === fullName);
+    return match ? toPull(match) : null;
   }
 
   async createDraftPull(p: { title: string; head: string; base: string; body: string }): Promise<Pull> {

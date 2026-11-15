@@ -1,4 +1,4 @@
-import type { Job, ParseResult, RepoRef } from './types.js';
+import { BRANCH_PREFIX, type ParseResult, type RepoRef } from './types.js';
 
 export const FACTORY_LABEL = 'factory';
 export const COMMAND = '/factory';
@@ -50,8 +50,8 @@ function isBot(user: any): boolean {
   return user?.type === 'Bot' || String(user?.login ?? '').endsWith('[bot]');
 }
 
-/** Turn a GitHub webhook/Actions event into a Job, or explain why it is skipped. */
-export function parseEvent(eventName: string, payload: any, branchPrefix = 'factory/'): ParseResult {
+/** Turn a GitHub webhook event into a Job, or explain why it is skipped. */
+export function parseEvent(eventName: string, payload: any): ParseResult {
   switch (eventName) {
     case 'issues': {
       if (payload.action !== 'labeled') return { skip: `issues.${payload.action} is not a trigger` };
@@ -93,7 +93,7 @@ export function parseEvent(eventName: string, payload: any, branchPrefix = 'fact
       if (payload.action !== 'submitted') return { skip: `pull_request_review.${payload.action} is not a trigger` };
       if (payload.review?.state !== 'changes_requested') return { skip: `review state "${payload.review?.state}" is not changes_requested` };
       const head: string = payload.pull_request.head.ref;
-      if (!head.startsWith(branchPrefix)) return { skip: `PR branch "${head}" is not a factory branch` };
+      if (!head.startsWith(BRANCH_PREFIX)) return { skip: `PR branch "${head}" is not a factory branch` };
       if (isBot(payload.review.user)) return { skip: 'reviews from bots are ignored' };
       return {
         job: {

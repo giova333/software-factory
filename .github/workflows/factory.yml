@@ -9,7 +9,10 @@ on:
         type: string
         default: ghcr.io/giova333/software-factory:main
       allowed_users:
-        description: Comma-separated hard allowlist of GitHub logins. Overrides allowed_users in .factory.yml.
+        description: >-
+          Comma-separated hard allowlist of GitHub logins. Overrides allowed_users in .factory.yml.
+          Prefer the FACTORY_ALLOWED_USERS Actions variable (repo or org), which a PR cannot edit;
+          it is used when this input is empty.
         type: string
         default: ''
     secrets:
@@ -26,8 +29,12 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    # One run at a time per issue/PR; later events queue instead of cancelling.
+    # Above .factory.yml limits.timeout_minutes (default 30), so the factory hits its own deadline
+    # first and can still post its failure reply.
+    timeout-minutes: 60
+    # One run at a time per issue/PR. GitHub keeps at most ONE pending run per group: a third event
+    # arriving while one runs and one waits replaces the waiting one, which is then cancelled.
+    # There is no queue; re-send a dropped trigger (comment again, or re-add the label).
     concurrency:
       group: factory-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
@@ -54,20 +61,24 @@ jobs:
           IMAGE: ${{ inputs.image }}
           FACTORY_GITHUB_TOKEN: ${{ steps.app.outputs.token }}
           ANTHROPIC_API_KEY: ${{ secrets.anthropic_api_key }}
-          FACTORY_ALLOWED_USERS: ${{ inputs.allowed_users }}
+          FACTORY_ALLOWED_USERS: ${{ inputs.allowed_users || vars.FACTORY_ALLOWED_USERS }}
           FACTORY_GIT_NAME: ${{ steps.bot.outputs.name }}
           FACTORY_GIT_EMAIL: ${{ steps.bot.outputs.email }}
           FACTORY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # The token goes in on stdin, not as -e: the agent runs as the same uid as the factory
+        # (PID 1), so anything in the factory's environment is readable from /proc/1/environ.
         run: |
           out="$RUNNER_TEMP/factory-out"
           mkdir -p "$out" && chmod 777 "$out"
-          docker run --rm \
-            -e FACTORY_GITHUB_TOKEN -e ANTHROPIC_API_KEY -e FACTORY_ALLOWED_USERS \
+          printf '%s' "$FACTORY_GITHUB_TOKEN" | docker run -i --rm \
+            -e ANTHROPIC_API_KEY -e FACTORY_ALLOWED_USERS \
             -e FACTORY_GIT_NAME -e FACTORY_GIT_EMAIL -e FACTORY_RUN_URL \
-            -e GITHUB_EVENT_NAME -e GITHUB_SERVER_URL -e GITHUB_API_URL \
             -v "$GITHUB_EVENT_PATH:/event.json:ro" \
             -v "$out:/out" \
-            "$IMAGE" run --event /event.json --out /out
+            "$IMAGE" run --token-stdin \
+              --event /event.json --event-name "$GITHUB_EVENT_NAME" \
+              --server-url "$GITHUB_SERVER_URL" --api-url "$GITHUB_API_URL" \
+              --out /out
 
       - name: Upload transcript
         if: always()

@@ -7,16 +7,16 @@ import { sandboxEnv, sh } from './exec.js';
 import { Git, type GitIdentity } from './git.js';
 import type { GitHub } from './github.js';
 import type { Harness, HarnessResult } from './harness/index.js';
-import { buildPrompt } from './prompts.js';
+import { loadPromptTemplate, renderPrompt } from './prompts.js';
 import { resolveSkills, type SkillSource } from './skills.js';
-import type { Job, Logger } from './types.js';
+import { repoFullName, type Job, type Logger } from './types.js';
 
 export interface PipelineDeps {
   gh: GitHub;
   log: Logger;
   /** Scratch directory for this run (checkout, skills). */
   workRoot: string;
-  /** Where the transcript, prompt and run.json go (uploaded as an Actions artifact). */
+  /** Where the transcript, prompt and run.json go. */
   outDir: string;
   repoUrl: string;
   /** Token for git push. Only the factory process uses it. */
@@ -25,7 +25,7 @@ export interface PipelineDeps {
   createHarness: (name: string) => Harness;
   /** Link to this run, shown in replies. */
   runUrl?: string;
-  /** Hard allowlist from the workflow; overrides allowed_users in .factory.yml. */
+  /** Hard allowlist from the runtime; overrides allowed_users in .factory.yml. */
   allowedUsers?: string[];
   skillFetchUrl?: (s: SkillSource) => string;
 }
@@ -46,29 +46,36 @@ interface TestOutcome {
   tail?: string;
 }
 
-function money(n?: number): string {
+function formatUsd(n?: number): string {
   return n === undefined ? 'n/a' : `$${n.toFixed(2)}`;
 }
 
-function formatReply(p: {
-  ok: boolean;
+/** The parts of every reply that do not change during a run. */
+interface ReplyContext {
   job: Job;
   harness: string;
   model: string;
-  result?: HarnessResult;
   runUrl?: string;
-  pr?: { number: number; url: string };
-  changed?: boolean;
-  tests?: TestOutcome;
-  error?: string;
-}): string {
+}
+
+function formatReply(
+  c: ReplyContext,
+  p: {
+    ok: boolean;
+    result?: HarnessResult;
+    pr?: { number: number; url: string };
+    changed?: boolean;
+    tests?: TestOutcome;
+    error?: string;
+  },
+): string {
   const head = [
     `**Factory run** ${p.ok ? '✅' : '⚠️'}`,
-    `harness \`${p.harness}\``,
-    `model \`${p.model}\``,
+    `harness \`${c.harness}\``,
+    `model \`${c.model}\``,
     p.result?.turns !== undefined ? `${p.result.turns} turns` : undefined,
-    `cost ${money(p.result?.costUsd)}`,
-    p.runUrl ? `[run log](${p.runUrl})` : undefined,
+    `cost ${formatUsd(p.result?.costUsd)}`,
+    c.runUrl ? `[run log](${c.runUrl})` : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -77,8 +84,8 @@ function formatReply(p: {
     lines.push(`The run failed: ${p.error}`);
     return lines.join('\n');
   }
-  if (p.job.kind !== 'plan') {
-    if (p.pr && p.job.kind === 'build') lines.push(`Pull request: ${p.pr.url}`);
+  if (c.job.kind !== 'plan') {
+    if (p.pr && c.job.kind === 'build') lines.push(`Pull request: ${p.pr.url}`);
     lines.push(p.changed ? 'Changes were committed and pushed.' : 'No changes were made.');
     if (p.tests?.ran) {
       lines.push(p.tests.ok ? 'Tests: passed.' : `Tests: failed (exit ${p.tests.code}).`);
@@ -92,9 +99,9 @@ function formatReply(p: {
   return lines.join('\n');
 }
 
-function vars(job: Job, ctx: TaskContext, cfg: FactoryConfig): Record<string, string | undefined> {
+function promptVars(job: Job, ctx: TaskContext, cfg: FactoryConfig): Record<string, string | undefined> {
   return {
-    repo: `${job.repo.owner}/${job.repo.name}`,
+    repo: repoFullName(job.repo),
     number: String(job.number),
     title: ctx.title,
     body: ctx.body,
@@ -110,103 +117,199 @@ function vars(job: Job, ctx: TaskContext, cfg: FactoryConfig): Record<string, st
   };
 }
 
-/** Run one job end to end: context → skills → harness → commit/push/PR → reply. */
-export async function runJob(job: Job, d: PipelineDeps): Promise<RunOutcome> {
-  const { gh, log } = d;
-  const workspace = join(d.workRoot, 'repo');
-  await mkdir(d.outDir, { recursive: true });
+/** What run.json holds: written once config is resolved, then updated with the outcome. */
+interface RunRecord {
+  job: Job;
+  harness: string;
+  model: string;
+  config: FactoryConfig;
+  skills: string[];
+  startedAt: string;
+  finishedAt?: string;
+  status?: RunStatus;
+  costUsd?: number;
+  turns?: number;
+  error?: string;
+}
 
-  // Read config from the default branch, never from a PR branch the requester could edit.
-  const defaultBranch = await gh.getDefaultBranch();
-  const git = new Git(workspace, d.repoUrl, d.token, d.identity);
-  await git.clone(defaultBranch);
+/** A run whose config is resolved, before any work starts. */
+interface Run {
+  job: Job;
+  deps: PipelineDeps;
+  git: Git;
+  workspace: string;
+  cfg: FactoryConfig;
+  reply: ReplyContext;
+  /** Prompt template, loaded from the default branch before the work branch is checked out. */
+  template: string;
+  /** Epoch ms by which the whole run must be done: start + limits.timeout_minutes. */
+  deadline: number;
+  record: RunRecord;
+  result?: HarnessResult;
+}
+
+async function writeRunRecord(run: Run): Promise<void> {
+  await writeFile(join(run.deps.outDir, 'run.json'), JSON.stringify(run.record, null, 2));
+}
+
+/** Milliseconds left before the run deadline; throws if there are none left for `step`. */
+function timeLeft(run: Run, step: string): number {
+  const ms = run.deadline - Date.now();
+  if (ms <= 0) throw new Error(`the run deadline (${run.cfg.limits.timeout_minutes} min) passed before ${step}`);
+  return ms;
+}
+
+/**
+ * Clone the default branch and resolve everything that must come from it: config (never read from
+ * a PR branch the requester could edit) and the prompt template (so a PR cannot rewrite the agent's rules).
+ */
+async function resolveRun(job: Job, deps: PipelineDeps, startedAt: number): Promise<Run> {
+  const workspace = join(deps.workRoot, 'repo');
+  const git = new Git(workspace, deps.repoUrl, deps.token, deps.identity);
+  await git.clone(await deps.gh.getDefaultBranch());
   const cfg = await loadConfig(workspace);
-  if (d.allowedUsers && d.allowedUsers.length > 0) cfg.allowed_users = d.allowedUsers;
+  if (deps.allowedUsers && deps.allowedUsers.length > 0) cfg.allowed_users = deps.allowedUsers;
+  const reply: ReplyContext = { job, harness: job.harness ?? cfg.harness, model: job.model ?? cfg.model, runUrl: deps.runUrl };
+  const run: Run = {
+    job,
+    deps,
+    git,
+    workspace,
+    cfg,
+    reply,
+    template: await loadPromptTemplate(job.kind, workspace),
+    deadline: startedAt + cfg.limits.timeout_minutes * 60_000,
+    record: { job, harness: reply.harness, model: reply.model, config: cfg, skills: cfg.skills, startedAt: new Date(startedAt).toISOString() },
+  };
+  await writeRunRecord(run);
+  return run;
+}
 
-  if (!(await isAuthorized(job.actor, cfg, gh))) {
-    log.warn(`@${job.actor} is not allowed to trigger the factory; skipping silently.`);
-    return { status: 'unauthorized' };
+interface Work {
+  ctx: TaskContext;
+  startSha: string;
+  result: HarnessResult;
+  tests: TestOutcome;
+}
+
+/** Steps 1–3 (context, skills, harness), plus setup before and tests after. */
+async function doWork(run: Run): Promise<Work> {
+  const { job, deps, git, workspace, cfg } = run;
+
+  // 1. Fetch context
+  const ctx = await fetchContext(job, deps.gh);
+  if (job.kind !== 'plan' || job.isPullRequest) {
+    const state = await git.checkoutWorkBranch(ctx.branch, ctx.baseBranch);
+    deps.log.info(`working on ${ctx.branch} (${state})`);
+  }
+  const startSha = await git.head();
+
+  // 2. Resolve skills
+  const harness = deps.createHarness(run.reply.harness);
+  const skills = await resolveSkills(cfg.skills, join(deps.workRoot, 'skills'), deps.workRoot, deps.log, deps.skillFetchUrl);
+  run.record.skills = skills.map((s) => s.source);
+  await git.exclude(await harness.prepare(workspace, skills));
+
+  const env = sandboxEnv();
+  if (cfg.setup && job.kind !== 'plan') {
+    deps.log.info(`setup: ${cfg.setup}`);
+    const s = await sh(cfg.setup, { cwd: workspace, env, timeoutMs: timeLeft(run, 'setup') });
+    if (s.timedOut) throw new Error(`setup command ran past the run deadline (${cfg.limits.timeout_minutes} min)`);
+    if (s.code !== 0) throw new Error(`setup command failed (exit ${s.code}): ${s.stderr.slice(-1500)}`);
   }
 
-  await gh.reactEyes(job.commentId ? { commentId: job.commentId } : { issueNumber: job.number }).catch((e) => log.warn(`reaction failed: ${e}`));
+  // 3. Run the harness
+  const prompt = renderPrompt(run.template, promptVars(job, ctx, cfg));
+  await writeFile(join(deps.outDir, 'prompt.md'), prompt);
+  const result = await harness.run({ workspace, prompt, model: run.reply.model, maxTurns: cfg.limits.max_turns, timeoutMs: timeLeft(run, 'the harness'), env, log: deps.log });
+  run.result = result;
+  await writeFile(join(deps.outDir, 'transcript.txt'), result.transcript);
 
-  const harnessName = job.harness ?? cfg.harness;
-  const model = job.model ?? cfg.model;
-  let result: HarnessResult | undefined;
+  // Verify (informational; the agent was asked to keep tests green)
+  let tests: TestOutcome = { ran: false };
+  if (cfg.test && job.kind !== 'plan') {
+    const t = await sh(cfg.test, { cwd: workspace, env, timeoutMs: Math.min(15 * 60_000, timeLeft(run, 'tests')) });
+    tests = { ran: true, ok: t.code === 0, code: t.code, tail: (t.stdout + t.stderr).slice(-3000) };
+  }
+  return { ctx, startSha, result, tests };
+}
+
+/** Steps 4–5: commit, push, open the PR, reply. A plan only replies. */
+async function publish(run: Run, w: Work): Promise<RunOutcome> {
+  const { job, deps, git } = run;
+  const { ctx, startSha, result, tests } = w;
+
+  if (job.kind === 'plan') {
+    await deps.gh.comment(job.number, formatReply(run.reply, { ok: result.ok, result }));
+    return { status: 'planned', result };
+  }
+
+  // 4. Commit and push
+  if (await git.hasUncommitted()) {
+    await git.commitAll(`factory: ${ctx.title} (#${job.number})\n\n${job.kind}${job.instruction ? `: ${job.instruction}` : ''}${deps.runUrl ? `\n\nFactory-Run: ${deps.runUrl}` : ''}`);
+  }
+  const changed = (await git.head()) !== startSha;
+  let pr = ctx.pr;
+  if (changed) {
+    await git.push(ctx.branch);
+    deps.log.info(`pushed ${ctx.branch}\n${await git.diffStat(startSha)}`);
+    if (!pr && job.kind === 'build') {
+      const created = await deps.gh.createDraftPull({
+        title: ctx.title,
+        head: ctx.branch,
+        base: ctx.baseBranch,
+        body: `Closes #${job.number}\n\n${result.summary}\n\n---\n_Opened by the software factory${deps.runUrl ? ` · [run log](${deps.runUrl})` : ''}_`,
+      });
+      pr = { number: created.number, url: created.url };
+    }
+  }
+
+  // 5. Reply
+  await deps.gh.comment(job.number, formatReply(run.reply, { ok: result.ok && (tests.ok ?? true), result, pr, changed, tests }));
+  return { status: changed ? 'pushed' : 'no-changes', pr, result };
+}
+
+/** Authorize the actor, then work and publish; any failure becomes a failure reply. */
+async function execute(run: Run): Promise<RunOutcome> {
+  const { job, deps } = run;
+  if (!(await isAuthorized(job.actor, run.cfg, deps.gh))) {
+    deps.log.warn(`@${job.actor} is not allowed to trigger the factory; skipping silently.`);
+    return { status: 'unauthorized' };
+  }
+  await deps.gh.reactEyes(job.commentId ? { commentId: job.commentId } : { issueNumber: job.number }).catch((e) => deps.log.warn(`reaction failed: ${e}`));
 
   try {
-    // 1. Fetch context
-    const ctx = await fetchContext(job, gh, cfg.branch_prefix);
-    if (job.kind !== 'plan' || job.isPullRequest) {
-      const state = await git.checkoutWorkBranch(ctx.branch, ctx.baseBranch);
-      log.info(`working on ${ctx.branch} (${state})`);
-    }
-    const startSha = await git.head();
-
-    // 2. Resolve skills
-    const harness = d.createHarness(harnessName);
-    const skills = await resolveSkills(cfg.skills, join(d.workRoot, 'skills'), d.workRoot, log, d.skillFetchUrl);
-    await git.exclude(await harness.prepare(workspace, skills));
-
-    const env = sandboxEnv();
-    const timeoutMs = cfg.limits.timeout_minutes * 60_000;
-    if (cfg.setup && job.kind !== 'plan') {
-      log.info(`setup: ${cfg.setup}`);
-      const s = await sh(cfg.setup, { cwd: workspace, env, timeoutMs });
-      if (s.code !== 0) throw new Error(`setup command failed (exit ${s.code}): ${s.stderr.slice(-1500)}`);
-    }
-
-    // 3. Run the harness
-    const prompt = await buildPrompt(job.kind, workspace, vars(job, ctx, cfg));
-    await writeFile(join(d.outDir, 'prompt.md'), prompt);
-    result = await harness.run({ workspace, prompt, model, maxTurns: cfg.limits.max_turns, timeoutMs, env, log });
-    await writeFile(join(d.outDir, 'transcript.txt'), result.transcript);
-    await writeFile(
-      join(d.outDir, 'run.json'),
-      JSON.stringify({ job, harness: harnessName, model, config: cfg, skills: skills.map((s) => s.source), costUsd: result.costUsd, turns: result.turns }, null, 2),
-    );
-
-    if (job.kind === 'plan') {
-      await gh.comment(job.number, formatReply({ ok: result.ok, job, harness: harnessName, model, result, runUrl: d.runUrl }));
-      return { status: 'planned', result };
-    }
-
-    // Verify (informational; the agent was asked to keep tests green)
-    let tests: TestOutcome = { ran: false };
-    if (cfg.test) {
-      const t = await sh(cfg.test, { cwd: workspace, env, timeoutMs: 15 * 60_000 });
-      tests = { ran: true, ok: t.code === 0, code: t.code, tail: (t.stdout + t.stderr).slice(-3000) };
-    }
-
-    // 4. Commit and push
-    if (await git.hasUncommitted()) {
-      await git.commitAll(`factory: ${ctx.title} (#${job.number})\n\n${job.kind}${job.instruction ? `: ${job.instruction}` : ''}${d.runUrl ? `\n\nFactory-Run: ${d.runUrl}` : ''}`);
-    }
-    const changed = (await git.head()) !== startSha;
-    let pr = ctx.pr;
-    if (changed) {
-      await git.push(ctx.branch);
-      log.info(`pushed ${ctx.branch}\n${await git.diffStat(startSha)}`);
-      if (!pr && job.kind === 'build') {
-        const created = await gh.createDraftPull({
-          title: ctx.title,
-          head: ctx.branch,
-          base: ctx.baseBranch,
-          body: `Closes #${job.number}\n\n${result.summary}\n\n---\n_Opened by the software factory${d.runUrl ? ` · [run log](${d.runUrl})` : ''}_`,
-        });
-        pr = { number: created.number, url: created.url };
-      }
-    }
-
-    // 5. Reply
-    await gh.comment(job.number, formatReply({ ok: result.ok && (tests.ok ?? true), job, harness: harnessName, model, result, runUrl: d.runUrl, pr, changed, tests }));
-    return { status: changed ? 'pushed' : 'no-changes', pr, result };
+    return await publish(run, await doWork(run));
   } catch (e: any) {
     const error = String(e?.message ?? e).slice(0, 2000);
-    log.warn(`run failed: ${error}`);
-    await gh
-      .comment(job.number, formatReply({ ok: false, job, harness: harnessName, model, result, runUrl: d.runUrl, error }))
-      .catch((ce) => log.warn(`failure comment failed: ${ce}`));
-    return { status: 'failed', result, error };
+    deps.log.warn(`run failed: ${error}`);
+    await deps.gh
+      .comment(job.number, formatReply(run.reply, { ok: false, result: run.result, error }))
+      .catch((ce) => deps.log.warn(`failure comment failed: ${ce}`));
+    return { status: 'failed', result: run.result, error };
+  }
+}
+
+/** Run one job end to end: resolve config and authorize, then work, then publish. */
+export async function runJob(job: Job, deps: PipelineDeps): Promise<RunOutcome> {
+  const startedAt = Date.now();
+  await mkdir(deps.outDir, { recursive: true });
+  const run = await resolveRun(job, deps, startedAt);
+  let outcome: RunOutcome = { status: 'failed', error: 'the run stopped unexpectedly' };
+  try {
+    outcome = await execute(run);
+    return outcome;
+  } catch (e: any) {
+    outcome = { status: 'failed', result: run.result, error: String(e?.message ?? e).slice(0, 2000) };
+    throw e;
+  } finally {
+    Object.assign(run.record, {
+      finishedAt: new Date().toISOString(),
+      status: outcome.status,
+      costUsd: outcome.result?.costUsd,
+      turns: outcome.result?.turns,
+      error: outcome.error,
+    });
+    await writeRunRecord(run);
   }
 }

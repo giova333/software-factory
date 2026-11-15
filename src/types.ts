@@ -5,6 +5,14 @@ export interface RepoRef {
   name: string;
 }
 
+/** `owner/name`. */
+export function repoFullName(repo: RepoRef): string {
+  return `${repo.owner}/${repo.name}`;
+}
+
+/** Every branch the factory creates starts with this. The example workflow's pre-filter must match it. */
+export const BRANCH_PREFIX = 'factory/';
+
 /** A unit of work derived from one GitHub event. */
 export interface Job {
   kind: JobKind;
