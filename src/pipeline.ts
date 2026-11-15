@@ -193,6 +193,9 @@ interface Work {
 }
 
 /** Steps 1–3 (context, skills, harness), plus setup before and tests after. */
+/** Upper bound for the repo's setup command, within the run deadline. */
+const SETUP_TIMEOUT_MS = 10 * 60_000;
+
 async function doWork(run: Run): Promise<Work> {
   const { job, deps, git, workspace, cfg } = run;
 
@@ -213,8 +216,15 @@ async function doWork(run: Run): Promise<Work> {
   const env = sandboxEnv();
   if (cfg.setup && job.kind !== 'plan') {
     deps.log.info(`setup: ${cfg.setup}`);
-    const s = await sh(cfg.setup, { cwd: workspace, env, timeoutMs: timeLeft(run, 'setup') });
-    if (s.timedOut) throw new Error(`setup command ran past the run deadline (${cfg.limits.timeout_minutes} min)`);
+    // Setup gets its own cap so a stalled download can't eat the whole run before the agent starts.
+    const capMs = Math.min(SETUP_TIMEOUT_MS, timeLeft(run, 'setup'));
+    const s = await sh(cfg.setup, { cwd: workspace, env, timeoutMs: capMs });
+    if (s.timedOut) {
+      const why = capMs < SETUP_TIMEOUT_MS
+        ? `ran past the run deadline (${cfg.limits.timeout_minutes} min)`
+        : `timed out after ${SETUP_TIMEOUT_MS / 60_000} min`;
+      throw new Error(`setup command ${why}. Last output:\n${(s.stdout + s.stderr).slice(-1500)}`);
+    }
     if (s.code !== 0) throw new Error(`setup command failed (exit ${s.code}): ${s.stderr.slice(-1500)}`);
   }
 
