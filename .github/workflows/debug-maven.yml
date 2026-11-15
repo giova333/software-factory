@@ -7,12 +7,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Maven inside the factory image, sandbox env
+      - name: Maven through the factory's own sh(), node as PID 1, stdin piped
         run: |
-          docker run --rm --entrypoint bash ghcr.io/giova333/software-factory:main -c '
-            set -x
-            id; echo HOME=$HOME; java -version; mvn -v
-            cd /tmp && git clone -q --depth 1 https://github.com/giova333/daily-experiments && cd daily-experiments
-            env -i PATH="$PATH" HOME="$HOME" CI=true timeout 240 bash -lc "mvn -B dependency:go-offline" 2>&1 | tail -60
-            echo exit=${PIPESTATUS[0]}
+          echo token | docker run -i --rm --entrypoint node ghcr.io/giova333/software-factory:main --input-type=module -e '
+            import { execSync } from "node:child_process";
+            import { sh, sandboxEnv } from "/app/dist/exec.js";
+            const t0 = Date.now();
+            execSync("git clone -q --depth 1 https://github.com/giova333/daily-experiments /tmp/de");
+            const env = (sandboxEnv ?? (() => ({ PATH: process.env.PATH, HOME: process.env.HOME, CI: "true" })))();
+            console.log("env", Object.keys(env));
+            const r = await sh("mvn -B dependency:go-offline", { cwd: "/tmp/de", env, timeoutMs: 300000 });
+            console.log("code", r.code, "timedOut", r.timedOut, "secs", (Date.now()-t0)/1000);
+            console.log(r.stdout.slice(-3000)); console.log("STDERR", r.stderr.slice(-2000));
           '
