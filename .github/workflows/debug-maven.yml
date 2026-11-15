@@ -1,0 +1,18 @@
+name: debug-maven
+on:
+  push:
+    branches: [debug/maven-hang]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Maven inside the factory image, sandbox env
+        run: |
+          docker run --rm --entrypoint bash ghcr.io/giova333/software-factory:main -c '
+            set -x
+            id; echo HOME=$HOME; java -version; mvn -v
+            cd /tmp && git clone -q --depth 1 https://github.com/giova333/daily-experiments && cd daily-experiments
+            env -i PATH="$PATH" HOME="$HOME" CI=true timeout 240 bash -lc "mvn -B dependency:go-offline" 2>&1 | tail -60
+            echo exit=${PIPESTATUS[0]}
+          '
