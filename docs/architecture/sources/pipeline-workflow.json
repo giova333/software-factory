@@ -1,0 +1,398 @@
+{
+ "schema_version": 2,
+ "diagram_type": "workflow",
+ "meta": {
+  "title": "One factory run, step by step (runJob)",
+  "output": "pipeline-workflow/pipeline-workflow.html",
+  "quality_profile": "showcase",
+  "locale": "en",
+  "repository": {
+   "url": "https://github.com/giova333/software-factory.git",
+   "revision": "bf6cf633c7fb0b861102e1bd7958a91df3891ce4",
+   "link_mode": "local-only"
+  }
+ },
+ "lanes": [
+  {
+   "id": "gh",
+   "label": "GitHub"
+  },
+  {
+   "id": "runner",
+   "label": "Actions runner + CLI"
+  },
+  {
+   "id": "pipe",
+   "label": "Factory process (holds App token)"
+  },
+  {
+   "id": "sandbox",
+   "label": "Sandbox env (model key only)"
+  },
+  {
+   "id": "exc",
+   "label": "Stops and failures",
+   "variant": "exception"
+  }
+ ],
+ "phases": [
+  {
+   "id": "intake",
+   "label": "Intake",
+   "fromCol": 0,
+   "toCol": 1
+  },
+  {
+   "id": "trust",
+   "label": "Trust",
+   "fromCol": 2,
+   "toCol": 2,
+   "variant": "security"
+  },
+  {
+   "id": "work",
+   "label": "Context + agent",
+   "fromCol": 3,
+   "toCol": 4,
+   "variant": "emphasis"
+  },
+  {
+   "id": "publish",
+   "label": "Publish",
+   "fromCol": 5,
+   "toCol": 5,
+   "variant": "dashed"
+  }
+ ],
+ "mainPath": [
+  "event",
+  "token",
+  "parse",
+  "clone",
+  "context",
+  "agent",
+  "tests",
+  "commit",
+  "reply"
+ ],
+ "nodes": [
+  {
+   "id": "event",
+   "lane": "gh",
+   "col": 0,
+   "type": "cloud",
+   "label": "GitHub event",
+   "sublabel": "if: pre-filter",
+   "sources": [
+    {
+     "path": "examples/factory.yml",
+     "line": 16,
+     "end_line": 23
+    }
+   ]
+  },
+  {
+   "id": "token",
+   "lane": "runner",
+   "col": 0,
+   "type": "security",
+   "label": "Mint App token",
+   "sublabel": "queue per issue/PR",
+   "sources": [
+    {
+     "path": ".github/workflows/factory.yml",
+     "line": 31,
+     "end_line": 50
+    }
+   ]
+  },
+  {
+   "id": "parse",
+   "lane": "runner",
+   "col": 1,
+   "type": "backend",
+   "label": "parseEvent",
+   "sublabel": "event to Job",
+   "sources": [
+    {
+     "path": "src/triggers.ts",
+     "line": 54,
+     "end_line": 113
+    }
+   ]
+  },
+  {
+   "id": "skip",
+   "lane": "exc",
+   "col": 1,
+   "type": "external",
+   "label": "Skip",
+   "sublabel": "log, exit 0",
+   "sources": [
+    {
+     "path": "src/cli.ts",
+     "line": 48,
+     "end_line": 52
+    }
+   ]
+  },
+  {
+   "id": "clone",
+   "lane": "pipe",
+   "col": 2,
+   "type": "security",
+   "label": "Clone + authorize",
+   "sublabel": "config from main",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 119,
+     "end_line": 124
+    },
+    {
+     "path": "src/auth.ts",
+     "line": 10,
+     "end_line": 15
+    }
+   ]
+  },
+  {
+   "id": "silent",
+   "lane": "exc",
+   "col": 2,
+   "type": "external",
+   "label": "Silent stop",
+   "sublabel": "no reply",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 126,
+     "end_line": 129
+    }
+   ]
+  },
+  {
+   "id": "context",
+   "lane": "pipe",
+   "col": 3,
+   "type": "backend",
+   "label": "Context + branch",
+   "sublabel": "react, skills",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 131,
+     "end_line": 149
+    },
+    {
+     "path": "src/context.ts",
+     "line": 43,
+     "end_line": 80
+    }
+   ]
+  },
+  {
+   "id": "agent",
+   "lane": "sandbox",
+   "col": 4,
+   "type": "backend",
+   "label": "Setup + agent",
+   "sublabel": "prompt template",
+   "tag": "harness",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 151,
+     "end_line": 167
+    },
+    {
+     "path": "src/harness/claude-code.ts",
+     "line": 20,
+     "end_line": 52
+    }
+   ]
+  },
+  {
+   "id": "plan",
+   "lane": "gh",
+   "col": 4,
+   "type": "cloud",
+   "label": "Post plan",
+   "sublabel": "/factory plan",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 169,
+     "end_line": 172
+    }
+   ]
+  },
+  {
+   "id": "tests",
+   "lane": "sandbox",
+   "col": 5,
+   "type": "backend",
+   "label": "Run tests",
+   "sublabel": "informational",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 174,
+     "end_line": 179
+    }
+   ]
+  },
+  {
+   "id": "fail",
+   "lane": "exc",
+   "col": 4,
+   "type": "security",
+   "label": "Failure reply",
+   "sublabel": "error + run link",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 204,
+     "end_line": 211
+    }
+   ]
+  },
+  {
+   "id": "commit",
+   "lane": "pipe",
+   "col": 5,
+   "type": "security",
+   "label": "Commit + push",
+   "sublabel": "only if changed",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 181,
+     "end_line": 189
+    }
+   ]
+  },
+  {
+   "id": "reply",
+   "lane": "gh",
+   "col": 5,
+   "type": "cloud",
+   "label": "Draft PR + reply",
+   "sublabel": "summary, cost, tests",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 190,
+     "end_line": 203
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "from": "event",
+   "to": "token",
+   "variant": "emphasis"
+  },
+  {
+   "id": "e2",
+   "from": "token",
+   "to": "parse",
+   "label": "docker run",
+   "variant": "emphasis"
+  },
+  {
+   "id": "e-skip",
+   "from": "parse",
+   "to": "skip",
+   "label": "not a trigger",
+   "variant": "dashed",
+   "role": "branch"
+  },
+  {
+   "id": "e3",
+   "from": "parse",
+   "to": "clone",
+   "label": "Job",
+   "variant": "emphasis"
+  },
+  {
+   "id": "e-unauth",
+   "from": "clone",
+   "to": "silent",
+   "label": "denied",
+   "variant": "security",
+   "role": "error"
+  },
+  {
+   "id": "e5",
+   "from": "clone",
+   "to": "context",
+   "label": "allowed",
+   "variant": "emphasis"
+  },
+  {
+   "id": "e7",
+   "from": "context",
+   "to": "agent",
+   "label": "sandboxEnv",
+   "variant": "emphasis"
+  },
+  {
+   "id": "e-fail",
+   "from": "agent",
+   "to": "fail",
+   "label": "error",
+   "variant": "security",
+   "role": "error"
+  },
+  {
+   "id": "e-plan",
+   "from": "agent",
+   "to": "plan",
+   "label": "plan job",
+   "variant": "dashed",
+   "role": "branch"
+  },
+  {
+   "id": "e8",
+   "from": "agent",
+   "to": "tests",
+   "variant": "emphasis"
+  },
+  {
+   "id": "e9",
+   "from": "tests",
+   "to": "commit",
+   "label": "if changed",
+   "variant": "emphasis"
+  },
+  {
+   "id": "e10",
+   "from": "commit",
+   "to": "reply",
+   "label": "pushed",
+   "variant": "emphasis"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "rose",
+   "title": "Why config comes first",
+   "items": [
+    ".factory.yml is read from the default branch, so a PR cannot add itself to allowed_users",
+    "The workflow input FACTORY_ALLOWED_USERS overrides it as a hard gate"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "Failure handling",
+   "items": [
+    "Any error after auth (fork PR, setup failure, unknown harness, git error) posts a failure reply with the run link",
+    "No changes: no push and no PR; the reply says so",
+    "A re-run of the same issue reuses the factory/<n>-<slug> branch and its PR"
+   ]
+  }
+ ]
+}

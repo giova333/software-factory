@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Issue labelled factory to draft PR",
+    "output": "issue-sequence/issue-sequence.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": { "url": "https://github.com/giova333/software-factory.git", "revision": "bf6cf633c7fb0b861102e1bd7958a91df3891ce4", "link_mode": "local-only" }
+  },
+  "participants": [
+    { "id": "dev", "type": "external", "label": "Maintainer", "sublabel": "giova333" },
+    { "id": "gh", "type": "cloud", "label": "GitHub", "sublabel": "API + git", "sources": [{ "path": "src/github.ts", "line": 62, "end_line": 142 }] },
+    { "id": "actions", "type": "backend", "label": "Actions", "sublabel": "reusable workflow", "sources": [{ "path": ".github/workflows/factory.yml", "line": 26, "end_line": 79 }] },
+    { "id": "factory", "type": "security", "label": "Factory", "sublabel": "CLI + pipeline", "sources": [{ "path": "src/pipeline.ts", "line": 114, "end_line": 212 }] },
+    { "id": "claude", "type": "backend", "label": "Claude Code", "sublabel": "sandbox env", "sources": [{ "path": "src/harness/claude-code.ts", "line": 20, "end_line": 52 }] },
+    { "id": "anthropic", "type": "external", "label": "Anthropic API", "sublabel": "model" }
+  ],
+  "segments": [
+    { "from": 150, "to": 262, "label": "Trigger" },
+    { "from": 272, "to": 488, "label": "Trust + context" },
+    { "from": 498, "to": 640, "label": "Agent" },
+    { "from": 650, "to": 830, "label": "Publish" }
+  ],
+  "messages": [
+    { "id": "m1", "from": "dev", "to": "gh", "y": 165, "label": "add label factory", "variant": "emphasis" },
+    { "id": "m2", "from": "gh", "to": "actions", "y": 195, "label": "issues.labeled", "variant": "emphasis" },
+    { "id": "m3", "from": "actions", "to": "gh", "y": 225, "label": "mint App token", "variant": "security" },
+    { "id": "m4", "from": "gh", "to": "actions", "y": 254, "label": "installation token", "variant": "return" },
+    { "id": "m5", "from": "actions", "to": "factory", "y": 285, "label": "docker run + event.json", "variant": "emphasis", "note": "parseEvent: build job for #1" },
+    { "id": "m6", "from": "factory", "to": "gh", "y": 340, "label": "fetch main", "variant": "security" },
+    { "id": "m7", "from": "gh", "to": "factory", "y": 368, "label": ".factory.yml", "variant": "return", "note": "allowlist check passes" },
+    { "id": "m8", "from": "factory", "to": "gh", "y": 420, "label": "react eyes, read issue", "variant": "default" },
+    { "id": "m9", "from": "gh", "to": "factory", "y": 448, "label": "issue + comments", "variant": "return", "note": "branch factory/1-add-hello" },
+    { "id": "m10", "from": "factory", "to": "claude", "y": 510, "label": "prompt on stdin", "variant": "emphasis", "note": "skills in .claude/skills" },
+    { "id": "m11", "from": "claude", "to": "anthropic", "y": 565, "label": "tool loop", "variant": "security" },
+    { "id": "m12", "from": "anthropic", "to": "claude", "y": 594, "label": "edits + commands", "variant": "return" },
+    { "id": "m13", "from": "claude", "to": "factory", "y": 624, "label": "JSON summary, cost", "variant": "return" },
+    { "id": "m14", "from": "factory", "to": "gh", "y": 665, "label": "git push branch", "variant": "security", "note": "after test run + commit" },
+    { "id": "m15", "from": "factory", "to": "gh", "y": 720, "label": "create draft PR", "variant": "emphasis" },
+    { "id": "m16", "from": "factory", "to": "gh", "y": 750, "label": "reply on issue", "variant": "default" },
+    { "id": "m17", "from": "actions", "to": "gh", "y": 780, "label": "upload transcript", "variant": "dashed" },
+    { "id": "m18", "from": "gh", "to": "dev", "y": 810, "label": "PR + summary", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "actions", "from": 195, "to": 785, "type": "backend" },
+    { "participant": "factory", "from": 285, "to": 755, "type": "security" },
+    { "participant": "claude", "from": 510, "to": 627, "type": "backend" },
+    { "participant": "anthropic", "from": 565, "to": 597, "type": "external" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Who holds which secret", "items": ["Actions holds the App key and mints a short-lived token", "Factory uses that token for every GitHub call and the push", "Claude Code only ever sees the Anthropic key"] },
+    { "dot": "cyan", "title": "Re-runs", "items": ["A second trigger on the same issue reuses the branch and its draft PR", "Runs for one issue queue instead of cancelling each other"] }
+  ]
+}

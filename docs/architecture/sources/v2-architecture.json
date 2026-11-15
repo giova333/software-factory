@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Software Factory v2 (planned): Kubernetes + Tekton",
+    "output": "v2-architecture/v2-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en"
+  },
+  "components": [
+    { "id": "maintainer", "type": "external", "label": "Maintainer", "sublabel": "issue, comment, review", "pos": [40, 40], "size": [150, 64] },
+    { "id": "events", "type": "cloud", "label": "GitHub webhooks", "sublabel": "App webhook, HMAC", "pos": [290, 40], "size": [150, 64] },
+    { "id": "listener", "type": "security", "label": "EventListener", "sublabel": "POST /webhook", "pos": [540, 40], "size": [150, 64], "tag": "Tekton" },
+    { "id": "triggers", "type": "backend", "label": "Triggers", "sublabel": "Binding + Template", "pos": [540, 190], "size": [150, 64], "tag": "github interceptor" },
+    { "id": "fetch", "type": "backend", "label": "Fetch context", "sublabel": "PR, comment, repo", "pos": [540, 340], "size": [150, 64], "tag": "task 1" },
+    { "id": "skills", "type": "backend", "label": "Pull skills", "sublabel": "oras pull to .claude/", "pos": [540, 490], "size": [150, 64], "tag": "task 2" },
+    { "id": "run", "type": "backend", "label": "Run agent", "sublabel": "factory image", "pos": [540, 640], "size": [150, 64], "tag": "task 3" },
+    { "id": "commit", "type": "backend", "label": "Commit to PR", "sublabel": "git + GitHub API", "pos": [540, 790], "size": [150, 64], "tag": "task 4" },
+    { "id": "reply", "type": "backend", "label": "Reply in PR", "sublabel": "GitHub API", "pos": [540, 940], "size": [150, 64], "tag": "task 5" },
+    { "id": "github", "type": "cloud", "label": "GitHub API", "sublabel": "repo, issues, PRs", "pos": [290, 340], "size": [150, 664] },
+    { "id": "oci", "type": "database", "label": "OCI registry", "sublabel": "skills + agents", "pos": [1040, 490], "size": [150, 64], "tag": "GHCR" },
+    { "id": "agent", "type": "backend", "label": "Agent pod", "sublabel": "swappable harness", "pos": [790, 640], "size": [150, 64], "tag": "Claude, Codex, OpenCode" },
+    { "id": "secrets", "type": "security", "label": "K8s Secrets", "sublabel": "App key, model key", "pos": [790, 790], "size": [150, 64] },
+    { "id": "model", "type": "external", "label": "Anthropic API", "sublabel": "vLLM is out of scope", "pos": [1040, 640], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Kubernetes cluster", "wraps": ["listener", "triggers", "fetch", "skills", "run", "commit", "reply", "agent", "secrets"], "pad": 22 },
+    { "kind": "security-group", "label": "PipelineRun factory-run-*", "wraps": ["fetch", "skills", "run", "commit", "reply"], "pad": 12 }
+  ],
+  "connections": [
+    { "id": "m-events", "from": "maintainer", "to": "events", "label": "acts", "variant": "emphasis" },
+    { "id": "events-listener", "from": "events", "to": "listener", "label": "webhook", "variant": "security" },
+    { "id": "listener-triggers", "from": "listener", "to": "triggers", "label": "filtered event", "variant": "emphasis" },
+    { "id": "triggers-fetch", "from": "triggers", "to": "fetch", "label": "creates PipelineRun", "variant": "emphasis" },
+    { "id": "fetch-github", "from": "fetch", "to": "github", "label": "read" },
+    { "id": "fetch-skills", "from": "fetch", "to": "skills", "variant": "emphasis" },
+    { "id": "skills-oci", "from": "skills", "to": "oci", "label": "oras pull" },
+    { "id": "skills-run", "from": "skills", "to": "run", "variant": "emphasis" },
+    { "id": "run-agent", "from": "run", "to": "agent", "label": "schedule", "variant": "emphasis" },
+    { "id": "agent-model", "from": "agent", "to": "model", "label": "tokens", "variant": "security" },
+    { "id": "secrets-agent", "from": "secrets", "to": "agent", "label": "model key", "variant": "security" },
+    { "id": "secrets-commit", "from": "secrets", "to": "commit", "label": "App key", "variant": "security" },
+    { "id": "run-commit", "from": "run", "to": "commit", "variant": "emphasis" },
+    { "id": "commit-github", "from": "commit", "to": "github", "label": "git push", "variant": "security" },
+    { "id": "commit-reply", "from": "commit", "to": "reply", "variant": "emphasis" },
+    { "id": "reply-github", "from": "reply", "to": "github", "label": "comment", "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "What carries over from v1", "items": ["The same factory image and the same five steps; each step becomes a Tekton task calling the CLI", "Harness adapters and prompt templates are unchanged", "The agent pod is the v1 container with only the model key"] },
+    { "dot": "violet", "title": "What changes", "items": ["GitHub App webhook replaces Actions events, with HMAC validation at the EventListener", "Skills move from git fetch at a SHA to oras pull of versioned OCI artifacts", "Image split per harness so agent pods stay small"] },
+    { "dot": "slate", "title": "Out of scope for now", "items": ["Self-hosted vLLM model server", "Automatic CI-fix loop"] }
+  ]
+}

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Software Factory Atlas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: a drafting-table index. Header with the pipeline strip, then three bands (Runtime, Behaviour, Code), each a grid of plates. */
+:root {
+  --paper: #f5f7f8;
+  --sheet: #ffffff;
+  --ink: #15212b;
+  --muted: #5a6b78;
+  --rule: #d8e0e5;
+  --accent: #0f766e;
+  --accent-soft: #e2f3f1;
+  --planned: #8a5a00;
+  --planned-soft: #fbf0d9;
+  --display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f161b; --sheet: #162129; --ink: #e6edf1; --muted: #93a5b1; --rule: #26343e;
+    --accent: #3cc1b3; --accent-soft: #123532; --planned: #f0b85a; --planned-soft: #3a2c12; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f161b; --sheet: #162129; --ink: #e6edf1; --muted: #93a5b1; --rule: #26343e;
+  --accent: #3cc1b3; --accent-soft: #123532; --planned: #f0b85a; --planned-soft: #3a2c12; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 44px; }
+header { display: grid; gap: 14px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(30px, 5vw, 44px); line-height: 1.08; margin: 0; text-wrap: balance; }
+.lede { max-width: 66ch; margin: 0; color: var(--muted); }
+.strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-family: var(--mono); font-size: 12.5px; margin-top: 6px; }
+.strip span { padding: 4px 9px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); white-space: nowrap; }
+.strip span.key { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.strip i { color: var(--muted); font-style: normal; }
+section { display: grid; gap: 18px; }
+.band-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; border-bottom: 1px solid var(--rule); padding-bottom: 10px; }
+h2 { font-family: var(--display); font-size: 21px; font-weight: 600; margin: 0; }
+.band-head p { margin: 0; color: var(--muted); font-size: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 20px; }
+a.plate { display: grid; grid-template-rows: auto 1fr; text-decoration: none; color: inherit; background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; transition: border-color .15s, transform .15s; min-width: 0; }
+a.plate:hover { border-color: var(--accent); transform: translateY(-2px); }
+a.plate:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.thumb { aspect-ratio: 720 / 504; max-width: 100%; background: #fff; border-bottom: 1px solid var(--rule); overflow: hidden; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+.meta { padding: 14px 16px 16px; display: grid; gap: 6px; align-content: start; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kind { font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.badge { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.badge.planned { background: var(--planned-soft); color: var(--planned); }
+h3 { font-family: var(--display); font-weight: 600; font-size: 17px; margin: 0; line-height: 1.3; }
+.meta p { margin: 0; color: var(--muted); font-size: 14px; }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 16px; display: grid; gap: 6px; }
+footer code { font-family: var(--mono); font-size: 12.5px; }
+@media (prefers-reduced-motion: reduce) { a.plate { transition: none; } a.plate:hover { transform: none; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Architecture atlas · v1 scaffold · 8 diagrams</div>
+    <h1>Software Factory Atlas</h1>
+    <p class="lede">How a GitHub issue, PR comment or review becomes an agent-written commit. Every diagram is interactive: click a node to see what it does and the source lines behind it, trace a route, or switch themes.</p>
+    <div class="strip" aria-label="The five pipeline steps">
+      <span>event</span><i>→</i><span>1 fetch context</span><i>→</i><span>2 resolve skills</span><i>→</i><span class="key">3 run harness</span><i>→</i><span>4 commit + push</span><i>→</i><span>5 reply</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="band-head"><h2>Runtime</h2><p>Where each part runs, and what it is allowed to touch.</p></div>
+    <div class="grid">
+      <a class="plate" href="diagrams/v1-architecture.html">
+        <div class="thumb"><img src="thumbs/v1-architecture.webp" alt="v1 architecture diagram preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Architecture</span><span class="badge">v1 · source-linked</span></div>
+          <h3>v1 on GitHub Actions</h3>
+          <p>Caller and reusable workflow, the App token, the factory container and its modules, Claude Code, and every external service.</p></div>
+      </a>
+      <a class="plate" href="diagrams/v2-architecture.html">
+        <div class="thumb"><img src="thumbs/v2-architecture.webp" alt="v2 architecture diagram preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Architecture</span><span class="badge planned">v2 · planned</span></div>
+          <h3>v2 on Kubernetes + Tekton</h3>
+          <p>EventListener, Triggers and a PipelineRun of five tasks, skills from an OCI registry, and the same image as the agent pod.</p></div>
+      </a>
+      <a class="plate" href="diagrams/secrets-dataflow.html">
+        <div class="thumb"><img src="thumbs/secrets-dataflow.webp" alt="Secrets and data flow preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Data flow</span><span class="badge">source-linked</span></div>
+          <h3>Where secrets and code go</h3>
+          <p>Which keys reach which process, what context the factory reads, and what leaves the runner for GitHub, Anthropic and the run artifact.</p></div>
+      </a>
+    </div>
+  </section>
+
+  <section>
+    <div class="band-head"><h2>Behaviour</h2><p>What happens during a run, and across the life of an issue.</p></div>
+    <div class="grid">
+      <a class="plate" href="diagrams/pipeline-workflow.html">
+        <div class="thumb"><img src="thumbs/pipeline-workflow.webp" alt="Pipeline workflow preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Workflow</span><span class="badge">source-linked</span></div>
+          <h3>One run, step by step</h3>
+          <p>Every branch of runJob: skipped events, silent auth stops, plan-only runs, failures, and the publish path.</p></div>
+      </a>
+      <a class="plate" href="diagrams/issue-sequence.html">
+        <div class="thumb"><img src="thumbs/issue-sequence.webp" alt="Issue to PR sequence preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Sequence</span><span class="badge">source-linked</span></div>
+          <h3>Issue labelled to draft PR</h3>
+          <p>Each call between GitHub, Actions, the factory, Claude Code and the Anthropic API, in order.</p></div>
+      </a>
+      <a class="plate" href="diagrams/work-lifecycle.html">
+        <div class="thumb"><img src="thumbs/work-lifecycle.webp" alt="Lifecycle preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Lifecycle</span><span class="badge">source-linked</span></div>
+          <h3>Life of a factory issue</h3>
+          <p>From label to merge, with the review loop, plan-only runs, retries and silent denials.</p></div>
+      </a>
+    </div>
+  </section>
+
+  <section>
+    <div class="band-head"><h2>Code</h2><p>How the repository is organised and where the seams are.</p></div>
+    <div class="grid">
+      <a class="plate" href="diagrams/code-tree.html">
+        <div class="thumb"><img src="thumbs/code-tree.webp" alt="Repository tree preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Tree</span><span class="badge">source-linked</span></div>
+          <h3>Repository layout</h3>
+          <p>Every module mapped to the pipeline step it implements, plus tests, workflows and the image.</p></div>
+      </a>
+      <a class="plate" href="diagrams/code-classes.html">
+        <div class="thumb"><img src="thumbs/code-classes.webp" alt="Class diagram preview" loading="lazy"></div>
+        <div class="meta"><div class="row"><span class="kind">Class</span><span class="badge">source-linked</span></div>
+          <h3>Swappable seams</h3>
+          <p>The Harness and GitHub interfaces, their real and fake implementations, and what runJob owns.</p></div>
+      </a>
+    </div>
+  </section>
+
+  <footer>
+    <div>Generated with Archify 3.2 from the v1 scaffold. Source links are pinned to local commit <code>bf6cf63</code>, which exists only in the build environment until the repository is pushed.</div>
+    <div>The v2 diagram shows a plan, not code.</div>
+  </footer>
+</div>
+
+</body>
+</html>

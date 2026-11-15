@@ -1,0 +1,284 @@
+{
+ "schema_version": 3,
+ "diagram_type": "lifecycle",
+ "meta": {
+  "title": "Life of a factory issue, from label to merge",
+  "output": "work-lifecycle/work-lifecycle.html",
+  "quality_profile": "showcase",
+  "locale": "en",
+  "repository": {
+   "url": "https://github.com/giova333/software-factory.git",
+   "revision": "bf6cf633c7fb0b861102e1bd7958a91df3891ce4",
+   "link_mode": "local-only"
+  }
+ },
+ "mainPath": [
+  "open",
+  "queued",
+  "building",
+  "draft",
+  "review",
+  "merged"
+ ],
+ "states": [
+  {
+   "id": "open",
+   "type": "start",
+   "label": "Issue open",
+   "sublabel": "the task",
+   "tag": "human",
+   "step": "01"
+  },
+  {
+   "id": "queued",
+   "type": "waiting",
+   "label": "Queued",
+   "sublabel": "per issue",
+   "tag": "Actions",
+   "step": "02",
+   "sources": [
+    {
+     "path": ".github/workflows/factory.yml",
+     "line": 30,
+     "end_line": 33
+    }
+   ]
+  },
+  {
+   "id": "building",
+   "type": "active",
+   "label": "Working",
+   "sublabel": "agent run",
+   "tag": "factory",
+   "step": "03",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 137,
+     "end_line": 167
+    }
+   ]
+  },
+  {
+   "id": "draft",
+   "type": "decision",
+   "label": "Draft PR",
+   "sublabel": "Closes #n",
+   "tag": "gate",
+   "step": "04",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 186,
+     "end_line": 203
+    }
+   ]
+  },
+  {
+   "id": "review",
+   "type": "waiting",
+   "label": "Review",
+   "sublabel": "human",
+   "tag": "human",
+   "step": "05"
+  },
+  {
+   "id": "merged",
+   "type": "success",
+   "label": "Merged",
+   "sublabel": "issue closes",
+   "tag": "terminal",
+   "step": "06"
+  },
+  {
+   "id": "fixing",
+   "type": "active",
+   "label": "Fixing",
+   "sublabel": "commit to branch",
+   "tag": "factory",
+   "sources": [
+    {
+     "path": "src/triggers.ts",
+     "line": 71,
+     "end_line": 109
+    }
+   ]
+  },
+  {
+   "id": "planned",
+   "type": "neutral",
+   "label": "Plan posted",
+   "sublabel": "/factory plan",
+   "tag": "no code",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 169,
+     "end_line": 172
+    }
+   ]
+  },
+  {
+   "id": "nochange",
+   "type": "waiting",
+   "label": "No changes",
+   "sublabel": "reply says why",
+   "tag": "retry",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 185,
+     "end_line": 203
+    }
+   ]
+  },
+  {
+   "id": "failed",
+   "type": "failure",
+   "label": "Run failed",
+   "sublabel": "failure reply",
+   "tag": "retry",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 204,
+     "end_line": 211
+    }
+   ]
+  },
+  {
+   "id": "ignored",
+   "type": "neutral",
+   "label": "Ignored",
+   "sublabel": "denied or skipped",
+   "tag": "silent",
+   "sources": [
+    {
+     "path": "src/pipeline.ts",
+     "line": 126,
+     "end_line": 129
+    }
+   ]
+  }
+ ],
+ "transitions": [
+  {
+   "id": "t1",
+   "from": "open",
+   "to": "queued",
+   "label": "label"
+  },
+  {
+   "id": "t2",
+   "from": "queued",
+   "to": "building",
+   "label": "start"
+  },
+  {
+   "id": "t3",
+   "from": "building",
+   "to": "draft",
+   "label": "push"
+  },
+  {
+   "id": "t4",
+   "from": "draft",
+   "to": "review",
+   "label": "reply"
+  },
+  {
+   "id": "t5",
+   "from": "review",
+   "to": "merged",
+   "label": "merge",
+   "variant": "emphasis"
+  },
+  {
+   "id": "t6",
+   "from": "review",
+   "to": "fixing",
+   "label": "/factory or changes requested"
+  },
+  {
+   "id": "t7",
+   "from": "fixing",
+   "to": "draft",
+   "label": "pushed"
+  },
+  {
+   "id": "t8",
+   "from": "open",
+   "to": "planned",
+   "label": "/factory plan",
+   "variant": "dashed"
+  },
+  {
+   "id": "t9",
+   "from": "planned",
+   "to": "queued",
+   "label": "/factory build"
+  },
+  {
+   "id": "t10",
+   "from": "building",
+   "to": "nochange",
+   "label": "nothing edited",
+   "variant": "dashed"
+  },
+  {
+   "id": "t11",
+   "from": "nochange",
+   "to": "queued",
+   "label": "re-trigger"
+  },
+  {
+   "id": "t12",
+   "from": "building",
+   "to": "failed",
+   "label": "error",
+   "variant": "security"
+  },
+  {
+   "id": "t13",
+   "from": "failed",
+   "to": "queued",
+   "label": "re-trigger"
+  },
+  {
+   "id": "t14",
+   "from": "queued",
+   "to": "ignored",
+   "label": "denied",
+   "variant": "security"
+  }
+ ],
+ "cards": [
+  {
+   "dot": "cyan",
+   "title": "Human gates",
+   "items": [
+    "The draft PR is the review gate; the factory never marks it ready or merges",
+    "Every factory action needs a human trigger: label, /factory comment, or review",
+    "A PR closed without merge simply ends the work; the branch stays"
+   ]
+  },
+  {
+   "dot": "amber",
+   "title": "Retries",
+   "items": [
+    "No changes and failed runs are recoverable: comment /factory build again",
+    "Re-runs reuse the same branch and PR"
+   ]
+  },
+  {
+   "dot": "slate",
+   "title": "Main-path triggers",
+   "items": [
+    "label: issue labelled factory or /factory build",
+    "start: the queued Actions run reaches a runner",
+    "push: commits pushed, draft PR opened or reused",
+    "reply: summary, test result and cost posted"
+   ]
+  }
+ ]
+}
