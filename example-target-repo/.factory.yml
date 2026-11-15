@@ -1,0 +1,13 @@
+# Tells the factory how to work on this repo. Read from the default branch only,
+# so a PR can't change it for its own run.
+harness: claude-code
+model: claude-sonnet-5-5
+allowed_users: [giova333]   # who may trigger the factory (the FACTORY_ALLOWED_USERS variable wins)
+skills:
+  # Optional. Pinned to a full 40-char commit SHA, e.g.:
+  # - github:mattpocock/skills@<sha>#skills/engineering/tdd
+setup: ''                   # nothing to install: no dependencies
+test: npm test              # the agent must keep this green; the factory re-runs it
+limits:
+  timeout_minutes: 30
+  max_turns: 60
