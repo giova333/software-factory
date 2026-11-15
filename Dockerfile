@@ -8,8 +8,10 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
+# Toolchains for target repos' setup/test commands: Node (base image), plus Java 17 and Maven.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates ripgrep jq \
+      openjdk-17-jdk-headless maven \
  && rm -rf /var/lib/apt/lists/*
 
 # Harness CLIs, pinned. Codex and OpenCode join here in v1.1.
