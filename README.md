@@ -3,6 +3,7 @@
 A minimal software factory. GitHub issues, PR comments and PR reviews go in, and a headless coding agent's commits and pull requests come out.
 
 Design doc: https://claude.ai/artifact/NpLUQPhrBLzmJfmATf5dCT
+Architecture diagrams: https://giova333.github.io/software-factory/ (built from `docs/` by `.github/workflows/pages.yml`)
 
 ## What triggers it
 

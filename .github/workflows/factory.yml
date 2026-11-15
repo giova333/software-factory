@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   run:
@@ -55,6 +56,13 @@ jobs:
           id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
           echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
           echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
+      # Needed when the image is private: also give the calling repo read access in the package's
+      # "Manage Actions access" settings, and `packages: read` in the caller's permissions.
+      - name: Log in to the image registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Run factory
         env:

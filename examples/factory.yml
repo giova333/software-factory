@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  packages: read   # lets the factory pull its image if it is private
 
 jobs:
   factory:
